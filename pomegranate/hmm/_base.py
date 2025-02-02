@@ -571,14 +571,14 @@ class _BaseHMM(Distribution):
 		X: list, numpy.ndarray, torch.Tensor, shape=(-1, len, self.d)
 			A set of examples to evaluate. Because sequences can be variable
 			length, there are three ways to format the sequences.
-			
-				1. Pass in a tensor of shape (n, length, dim), which can only 
-				be done when each sequence is the same length. 
 
-				2. Pass in a list of 3D tensors where each tensor has the shape 
-				(n, length, dim). In this case, each tensor is a collection of 
-				sequences of the same length and so sequences of different 
-				lengths can be trained on. 
+				1. Pass in a tensor of shape (n, length, dim), which can only
+				be done when each sequence is the same length.
+
+				2. Pass in a list of 3D tensors where each tensor has the shape
+				(n, length, dim). In this case, each tensor is a collection of
+				sequences of the same length and so sequences of different
+				lengths can be trained on.
 
 				3. Pass in a list of 2D tensors where each tensor has the shape
 				(length, dim). In this case, sequences of the same length will
@@ -607,8 +607,8 @@ class _BaseHMM(Distribution):
 		self
 		"""
 
-		X, sample_weight, priors = partition_sequences(X, 
-			sample_weight=sample_weight, priors=priors, n_dists=self.k)
+		X, sample_weight, priors = partition_sequences(X,
+													   sample_weight=sample_weight, priors=priors, n_dists=self.k)
 
 		# Initialize by concatenating across sequences
 		if not self._initialized:
@@ -618,6 +618,8 @@ class _BaseHMM(Distribution):
 				self._initialize(X, sample_weight=sample_weight)
 
 		logp, last_logp = None, None
+		times_passed_threshold = 0
+		last_pass = False
 		for i in range(self.max_iter):
 			start_time = time.time()
 
@@ -635,12 +637,28 @@ class _BaseHMM(Distribution):
 				duration = time.time() - start_time
 
 				if self.verbose:
-					print("[{}] Improvement: {}, Time: {:4.4}s".format(i, 
-						improvement, duration))
+					print("[{}] Improvement: {}, Time: {:4.4}s".format(i,
+																	   improvement, duration))
 
-				if improvement < self.tol:
+				# if improvement < self.tol:
+				# 	self._reset_cache()
+				# 	return self
+
+				if last_pass:
 					self._reset_cache()
 					return self
+
+				if (self._abs_tol and abs(improvement) < self.tol) \
+						or (not self._abs_tol and improvement < self.tol):
+					times_passed_threshold += 1
+
+					if times_passed_threshold >= self._num_of_improvements:
+
+						if improvement < 0:
+							last_pass = True
+						else:
+							self._reset_cache()
+							return self
 
 			last_logp = logp
 			self.from_summaries()
@@ -651,14 +669,14 @@ class _BaseHMM(Distribution):
 			for j, X_ in enumerate(X):
 				w_ = None if sample_weight is None else sample_weight[j]
 				p_ = None if priors is None else priors[j]
-				
+
 				logp += self.summarize(X_, sample_weight=w_, priors=p_).sum()
 
 			improvement = logp - last_logp
 			duration = time.time() - start_time
 
-			print("[{}] Improvement: {}, Time: {:4.4}s".format(i+1, 
-				improvement, duration))
+			print("[{}] Improvement: {}, Time: {:4.4}s".format(i + 1,
+															   improvement, duration))
 
 		self._reset_cache()
 		return self
